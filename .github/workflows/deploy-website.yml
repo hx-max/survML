@@ -1,0 +1,111 @@
+name: docs
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            docs:
+              - 'flaml/**'
+              - 'website/**'
+              - '.github/workflows/deploy-website.yml'
+
+  checks:
+    needs: changes
+    if: github.event_name != 'push' && (needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 14.x
+          # cache: yarn
+          # cache-dependency-path: '**/yarn.lock'
+      - name: setup python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: pydoc-markdown install
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydoc-markdown==4.7.0 "setuptools<82"
+      - name: pydoc-markdown run
+        run: |
+          pydoc-markdown
+      - name: Test Build
+        run: |
+          if [ -e yarn.lock ]; then
+          yarn install --frozen-lockfile --ignore-engines
+          yarn build
+          elif [ -e package-lock.json ]; then
+          npm ci
+          npm run build
+          else
+          npm i --legacy-peer-deps
+          npm run build
+          fi
+  gh-release:
+    needs: changes
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 14.x
+          # cache: yarn
+          # cache-dependency-path: '**/yarn.lock'
+      - name: setup python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: pydoc-markdown install
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydoc-markdown==4.7.0 "setuptools<82"
+      - name: pydoc-markdown run
+        run: |
+          pydoc-markdown
+      - name: Build website
+        run: |
+          if [ -e yarn.lock ]; then
+          yarn install --frozen-lockfile --ignore-engines
+          yarn build
+          elif [ -e package-lock.json ]; then
+          npm ci
+          npm run build
+          else
+          npm i --legacy-peer-deps
+          npm run build
+          fi
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Build output to publish to the `gh-pages` branch:
+          publish_dir: ./website/build

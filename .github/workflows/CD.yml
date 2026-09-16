@@ -1,0 +1,46 @@
+# This workflows will build and upload a Python Package using Twine when a release is published
+# Conda-forge bot will pick up new PyPI version and automatically create new version
+# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+
+name: CD
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+        python-version: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    environment: package
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install from source
+        # This is required for the pre-commit tests
+        shell: pwsh
+        run: pip install .
+      - name: Conda list
+        shell: pwsh
+        run: conda list
+      - name: Build
+        shell: pwsh
+        run: |
+          pip install twine wheel "setuptools<82"
+          python setup.py sdist bdist_wheel
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        shell: pwsh
+        run: twine upload dist/*
